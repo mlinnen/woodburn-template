@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Woodburn Template Splitter</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 580px; margin: 30px auto; padding: 20px; background: #f8f9fa; color: #222; }
+    .card { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    .group { margin-bottom: 16px; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.9rem; }
+    input[type="number"], input[type="file"], input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+    .checkbox-group { display: flex; align-items: center; gap: 10px; background: #fff8e6; padding: 12px; border: 1px solid #ffe08a; border-radius: 4px; cursor: pointer; }
+    .checkbox-group input { width: 18px; height: 18px; margin: 0; cursor: pointer; }
+    .checkbox-group span { font-weight: 600; font-size: 0.9rem; }
+    #previewContainer { text-align: center; margin-bottom: 16px; display: none; }
+    #previewCanvas { max-width: 100%; height: auto; border: 1px solid #ddd; border-radius: 4px; }
+    button { background: #2b579a; color: white; border: none; padding: 12px 20px; font-size: 1rem; border-radius: 4px; cursor: pointer; width: 100%; font-weight: bold; }
+    button:hover { background: #1e3f72; }
+    .note { font-size: 0.85rem; color: #555; margin-top: 15px; background: #eef2f7; padding: 10px; border-radius: 4px; line-height: 1.4; }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <h2 style="margin-top:0;">1:1 Woodburn Template Generator</h2>
+  
+  <div class="group">
+    <label>1. Select Your Image:</label>
+    <input type="file" id="imageInput" accept="image/*">
+  </div>
+
+  <div id="previewContainer">
+    <label style="text-align:left;">Preview (Red dashed lines show page splits):</label>
+    <canvas id="previewCanvas"></canvas>
+  </div>
+
+  <div class="group">
+    <label>2. Target Total Width (Inches):</label>
+    <input type="number" id="targetWidth" value="17.0" step="0.1" min="0.5">
+  </div>
+
+  <div class="group">
+    <label>Calculated Height (Locked Aspect Ratio):</label>
+    <input type="number" id="calcHeight" readonly style="background: #e9ecef;">
+  </div>
+
+  <div class="group">
+    <label>Calculated Page Layout (US Letter Landscape):</label>
+    <input type="text" id="pageLayout" readonly style="background: #e9ecef; font-weight: 600; color: #2b579a;" value="Select an image to calculate pages">
+  </div>
+
+  <div class="group">
+    <label class="checkbox-group">
+      <input type="checkbox" id="mirrorToggle">
+      <span>Mirror Image Horizontally (For Heat / Acetone Toner Transfer)</span>
+    </label>
+  </div>
+
+  <button id="generateBtn">Generate Multi-Page Landscape PDF</button>
+
+  <div class="note">
+    <strong>Printing & Assembly Tip:</strong><br>
+    • Set your printer dialog to <strong>"Actual Size"</strong> or <strong>"Scale: 100%"</strong>.<br>
+    • Trim along the <strong>red dashed lines</strong> on adjacent pages, align them over the matching red dashed lines on neighboring pages, and tape together!
+  </div>
+</div>
+
+<script>
+  let loadedImg = null;
+  const imgInput = document.getElementById('imageInput');
+  const widthInput = document.getElementById('targetWidth');
+  const heightDisplay = document.getElementById('calcHeight');
+  const pageLayoutDisplay = document.getElementById('pageLayout');
+  const generateBtn = document.getElementById('generateBtn');
+  const mirrorToggle = document.getElementById('mirrorToggle');
+  const previewContainer = document.getElementById('previewContainer');
+  const canvas = document.getElementById('previewCanvas');
+  const ctx = canvas.getContext('2d');
+
+  // US Letter Landscape dimensions & safe printable area (inches)
+  const PAGE_W = 11.0;
+  const PAGE_H = 8.5;
+  const MIN_MARGIN = 0.75; // Guarantees at least 0.75" margin/overlap around seams
+  const MAX_TILE_W = PAGE_W - (MIN_MARGIN * 2); // 9.5" max active width per page
+  const MAX_TILE_H = PAGE_H - (MIN_MARGIN * 2); // 7.0" max active height per page
+
+  function getGridMetrics(targetW, targetH) {
+    const cols = Math.max(1, Math.ceil(targetW / MAX_TILE_W));
+    const rows = Math.max(1, Math.ceil(targetH / MAX_TILE_H));
+    const totalPages = cols * rows;
+    const tileW = targetW / cols;
+    const tileH = targetH / rows;
+    return { cols, rows, totalPages, tileW, tileH };
+  }
+
+  function renderCleanImageToCanvas(targetCanvas) {
+    targetCanvas.width = loadedImg.width;
+    targetCanvas.height = loadedImg.height;
+    const targetCtx = targetCanvas.getContext('2d');
+    targetCtx.save();
+    if (mirrorToggle.checked) {
+      targetCtx.translate(targetCanvas.width, 0);
+      targetCtx.scale(-1, 1);
+    }
+    targetCtx.drawImage(loadedImg, 0, 0);
+    targetCtx.restore();
+  }
+
+  function updateImageAndRatio() {
+    if (!loadedImg) return;
+    
+    // 1. Update aspect ratio math
+    const targetW = parseFloat(widthInput.value) || 0;
+    const aspect = loadedImg.height / loadedImg.width;
+    const targetH = targetW * aspect;
+    heightDisplay.value = targetH.toFixed(2);
+
+    // 2. Calculate dynamic page grid
+    const { cols, rows, totalPages } = getGridMetrics(targetW, targetH);
+    const pageWord = totalPages === 1 ? 'Page' : 'Pages';
+    pageLayoutDisplay.value = `${totalPages} ${pageWord} (${cols} col${cols > 1 ? 's' : ''} × ${rows} row${rows > 1 ? 's' : ''})`;
+    generateBtn.textContent = `Generate ${totalPages}-${pageWord} Landscape PDF`;
+
+    // 3. Render normal or mirrored image onto the preview canvas
+    renderCleanImageToCanvas(canvas);
+
+    // 4. Draw live page-split guide lines on the preview canvas
+    if (totalPages > 1) {
+      ctx.save();
+      ctx.strokeStyle = '#dc3545';
+      ctx.lineWidth = Math.max(2, Math.round(canvas.width / 300));
+      const dashLen = Math.max(6, Math.round(canvas.width / 100));
+      ctx.setLineDash([dashLen, dashLen]);
+
+      for (let c = 1; c < cols; c++) {
+        const x = (canvas.width / cols) * c;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+      for (let r = 1; r < rows; r++) {
+        const y = (canvas.height / rows) * r;
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+    
+    previewContainer.style.display = 'block';
+  }
+
+  imgInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      loadedImg = new Image();
+      loadedImg.onload = updateImageAndRatio;
+      loadedImg.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  widthInput.addEventListener('input', updateImageAndRatio);
+  mirrorToggle.addEventListener('change', updateImageAndRatio);
+
+  generateBtn.addEventListener('click', () => {
+    if (!loadedImg) return alert('Please select an image first!');
+
+    const targetW = parseFloat(widthInput.value);
+    const targetH = parseFloat(heightDisplay.value);
+    if (!targetW || targetW <= 0) return alert('Please enter a valid target width!');
+
+    const { cols, rows, totalPages, tileW, tileH } = getGridMetrics(targetW, targetH);
+
+    // Export clean image (without preview guide lines) as a high-res JPEG
+    const exportCanvas = document.createElement('canvas');
+    renderCleanImageToCanvas(exportCanvas);
+    const processedImgData = exportCanvas.toDataURL('image/jpeg', 0.98);
+
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'in', format: [PAGE_W, PAGE_H] });
+
+    // Center each active tile (tileW x tileH) on the 11" x 8.5" page so every seam
+    // has generous overlap and consistent alignment across rows and columns.
+    const tileLeftX = (PAGE_W - tileW) / 2;
+    const tileRightX = tileLeftX + tileW;
+    const tileTopY = (PAGE_H - tileH) / 2;
+    const tileBottomY = tileTopY + tileH;
+
+    let pageIndex = 0;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (pageIndex > 0) {
+          doc.addPage([PAGE_W, PAGE_H], 'landscape');
+        }
+        pageIndex++;
+
+        // Position full image so that tile (c, r) lands at (tileLeftX, tileTopY)
+        const imgX = tileLeftX - (c * tileW);
+        const imgY = tileTopY - (r * tileH);
+        doc.addImage(processedImgData, 'JPEG', imgX, imgY, targetW, targetH);
+
+        // Draw red dashed seam/alignment lines for every internal grid boundary
+        doc.setDrawColor(220, 53, 69);
+        doc.setLineWidth(0.01);
+        doc.setLineDashPattern([0.1, 0.1], 0);
+
+        if (c > 0) {
+          doc.line(tileLeftX, 0, tileLeftX, PAGE_H);
+        }
+        if (c < cols - 1) {
+          doc.line(tileRightX, 0, tileRightX, PAGE_H);
+        }
+        if (r > 0) {
+          doc.line(0, tileTopY, PAGE_W, tileTopY);
+        }
+        if (r < rows - 1) {
+          doc.line(0, tileBottomY, PAGE_W, tileBottomY);
+        }
+
+        // Add subtle corner label for multi-page assembly reference
+        if (totalPages > 1) {
+          doc.setFontSize(8);
+          doc.setTextColor(150, 150, 150);
+          doc.text(
+            `Page ${pageIndex} of ${totalPages} (Row ${r + 1}, Col ${c + 1})`,
+            0.25,
+            0.25
+          );
+        }
+      }
+    }
+
+    const suffix = mirrorToggle.checked ? '_MIRRORED' : '';
+    doc.save(`woodburn_template_${targetW}x${targetH}in_${cols}x${rows}pages${suffix}.pdf`);
+  });
+</script>
+
+</body>
+</html>
