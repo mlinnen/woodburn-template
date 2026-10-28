@@ -6,8 +6,9 @@ A lightweight, browser-based utility that converts artwork and line drawings of 
 
 ## Features
 
-- **Exact 1:1 Scaling:** Specify your desired total target width in inches (defaults to `17.0"`), and the tool automatically calculates the locked aspect-ratio height.
-- **Automatic Multi-Page Grid Calculation:** Dynamically calculates the required number of columns and rows (`cols × rows`) on US Letter (`11" × 8.5"`) landscape pages based on your target dimensions, guaranteeing at least `0.75"` of margin/overlap around every seam (up to `9.5" × 7.0"` of active area per page).
+- **Exact 1:1 Scaling (Bidirectional Width & Height):** Specify either your desired **Target Width** or **Target Height** in inches, and the tool automatically calculates the other dimension while keeping your artwork's aspect ratio locked.
+- **Smart Page Orientation (Auto / Landscape / Portrait):** Defaults to **Auto (Best Fit / Fewest Pages)**, which compares US Letter Landscape (`11" × 8.5"`, up to `9.5" × 7.0"` active tile area) and Portrait (`8.5" × 11"`, up to `7.0" × 9.5"` active tile area) and automatically picks whichever orientation requires fewer pages (or matches your image's aspect orientation on ties). You can also manually lock Landscape or Portrait.
+- **Automatic Multi-Page Grid Calculation:** Dynamically calculates the required number of columns and rows (`cols × rows`) based on your target dimensions, guaranteeing at least `0.75"` of margin/overlap around every seam.
 - **Built-in Overlap & Red Dashed Alignment Guides:** Each page tile is centered on its sheet with overlapping artwork extending past the red dashed cut/alignment lines on all internal boundaries (left, right, top, and bottom), plus subtle page/grid labels (`Page X of Y (Row R, Col C)`) in the top-left corner.
 - **Live Split Preview:** Displays your uploaded artwork (including mirrored state) with live red dashed lines showing exactly where the page splits will occur before generating the PDF.
 - **Horizontal Mirroring:** One-click option to flip the image horizontally—essential when transferring patterns onto wood via **heat transfer** or **acetone toner transfer** methods.
@@ -36,9 +37,10 @@ The [`samples/`](samples/) directory demonstrates a full workflow:
 
 1. **Open the App:** Open the **[hosted GitHub Pages app](https://mlinnen.github.io/woodburn-template/app)** in your browser, or double-click [`src/template_printer.html`](src/template_printer.html) locally (an active internet connection is required to load the `jsPDF` library from CDN).
 2. **Select Your Image:** Click **Choose File** under *1. Select Your Image* and upload your template image (`JPG`, `PNG`, `WEBP`, etc.).
-3. **Set Target Width:** Enter your desired total physical width in inches under *2. Target Total Width (Inches)*.
-   - **Calculated Height** updates automatically to preserve your artwork's original proportions.
-   - **Calculated Page Layout** updates automatically to show the total number of pages and grid layout (e.g., `2 Pages (2 cols × 1 row)` or `6 Pages (3 cols × 2 rows)`), and the preview canvas updates with red dashed split lines.
+3. **Set Target Width or Height:** Enter your desired total physical width or height in inches under *2. Target Width / Target Height*.
+   - Editing either field automatically updates the other to preserve your artwork's original proportions.
+   - **Page Orientation** defaults to *Auto (Best Fit / Fewest Pages)*, or you can manually choose *Landscape* or *Portrait*.
+   - **Calculated Page Layout** updates automatically to show the total number of pages, orientation, and grid layout (e.g., `2 Pages — Portrait (1 col × 2 rows)` or `2 Pages — Landscape (2 cols × 1 row)`), and the preview canvas updates with red dashed split lines.
 4. **Configure Transfer Method (Optional):**
    - Leave **Mirror Image Horizontally** unchecked if you are using **graphite/carbon transfer paper** (tracing right-side up).
    - Check **Mirror Image Horizontally** if you are using a **heat tool / transfer tip** or **acetone toner transfer** (where the printed face goes down against the wood).

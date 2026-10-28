@@ -8,8 +8,9 @@
     body { font-family: system-ui, sans-serif; max-width: 580px; margin: 30px auto; padding: 20px; background: #f8f9fa; color: #222; }
     .card { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
     .group { margin-bottom: 16px; }
+    .row-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
     label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.9rem; }
-    input[type="number"], input[type="file"], input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+    input[type="number"], input[type="file"], input[type="text"], select { width: 100%; padding: 8px; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; font-size: 0.95rem; background: white; }
     .checkbox-group { display: flex; align-items: center; gap: 10px; background: #fff8e6; padding: 12px; border: 1px solid #ffe08a; border-radius: 4px; cursor: pointer; }
     .checkbox-group input { width: 18px; height: 18px; margin: 0; cursor: pointer; }
     .checkbox-group span { font-weight: 600; font-size: 0.9rem; }
@@ -35,18 +36,28 @@
     <canvas id="previewCanvas"></canvas>
   </div>
 
-  <div class="group">
-    <label>2. Target Total Width (Inches):</label>
-    <input type="number" id="targetWidth" value="17.0" step="0.1" min="0.5">
+  <div class="row-2col">
+    <div>
+      <label for="targetWidth">2. Target Width (Inches):</label>
+      <input type="number" id="targetWidth" value="17.0" step="0.1" min="0.5">
+    </div>
+    <div>
+      <label for="targetHeight">Target Height (Inches):</label>
+      <input type="number" id="targetHeight" placeholder="Auto (Locked Ratio)" step="0.1" min="0.5">
+    </div>
   </div>
 
   <div class="group">
-    <label>Calculated Height (Locked Aspect Ratio):</label>
-    <input type="number" id="calcHeight" readonly style="background: #e9ecef;">
+    <label for="orientationSelect">3. Page Orientation (US Letter 8.5" × 11"):</label>
+    <select id="orientationSelect">
+      <option value="auto" selected>Auto (Best Fit / Fewest Pages)</option>
+      <option value="landscape">Landscape (11" × 8.5")</option>
+      <option value="portrait">Portrait (8.5" × 11")</option>
+    </select>
   </div>
 
   <div class="group">
-    <label>Calculated Page Layout (US Letter Landscape):</label>
+    <label>Calculated Page Layout:</label>
     <input type="text" id="pageLayout" readonly style="background: #e9ecef; font-weight: 600; color: #2b579a;" value="Select an image to calculate pages">
   </div>
 
@@ -57,7 +68,7 @@
     </label>
   </div>
 
-  <button id="generateBtn">Generate Multi-Page Landscape PDF</button>
+  <button id="generateBtn">Generate Multi-Page PDF</button>
 
   <div class="note">
     <strong>Printing & Assembly Tip:</strong><br>
@@ -68,9 +79,12 @@
 
 <script>
   let loadedImg = null;
+  let activeDimension = 'width'; // Tracks whether user last edited 'width' or 'height'
+
   const imgInput = document.getElementById('imageInput');
   const widthInput = document.getElementById('targetWidth');
-  const heightDisplay = document.getElementById('calcHeight');
+  const heightInput = document.getElementById('targetHeight');
+  const orientationSelect = document.getElementById('orientationSelect');
   const pageLayoutDisplay = document.getElementById('pageLayout');
   const generateBtn = document.getElementById('generateBtn');
   const mirrorToggle = document.getElementById('mirrorToggle');
@@ -78,20 +92,44 @@
   const canvas = document.getElementById('previewCanvas');
   const ctx = canvas.getContext('2d');
 
-  // US Letter Landscape dimensions & safe printable area (inches)
-  const PAGE_W = 11.0;
-  const PAGE_H = 8.5;
+  // US Letter dimensions & safe printable margin (inches)
+  const LETTER_LONG = 11.0;
+  const LETTER_SHORT = 8.5;
   const MIN_MARGIN = 0.75; // Guarantees at least 0.75" margin/overlap around seams
-  const MAX_TILE_W = PAGE_W - (MIN_MARGIN * 2); // 9.5" max active width per page
-  const MAX_TILE_H = PAGE_H - (MIN_MARGIN * 2); // 7.0" max active height per page
 
-  function getGridMetrics(targetW, targetH) {
-    const cols = Math.max(1, Math.ceil(targetW / MAX_TILE_W));
-    const rows = Math.max(1, Math.ceil(targetH / MAX_TILE_H));
+  function computeLayoutForOrientation(targetW, targetH, orientation) {
+    const isPortrait = orientation === 'portrait';
+    const pageW = isPortrait ? LETTER_SHORT : LETTER_LONG;
+    const pageH = isPortrait ? LETTER_LONG : LETTER_SHORT;
+    const maxTileW = pageW - (MIN_MARGIN * 2);
+    const maxTileH = pageH - (MIN_MARGIN * 2);
+
+    const cols = Math.max(1, Math.ceil(targetW / maxTileW));
+    const rows = Math.max(1, Math.ceil(targetH / maxTileH));
     const totalPages = cols * rows;
     const tileW = targetW / cols;
     const tileH = targetH / rows;
-    return { cols, rows, totalPages, tileW, tileH };
+
+    return { orientation, isPortrait, pageW, pageH, cols, rows, totalPages, tileW, tileH };
+  }
+
+  function getBestGridMetrics(targetW, targetH) {
+    const mode = orientationSelect.value;
+    if (mode === 'landscape' || mode === 'portrait') {
+      return computeLayoutForOrientation(targetW, targetH, mode);
+    }
+
+    const landscapeMetrics = computeLayoutForOrientation(targetW, targetH, 'landscape');
+    const portraitMetrics = computeLayoutForOrientation(targetW, targetH, 'portrait');
+
+    if (portraitMetrics.totalPages < landscapeMetrics.totalPages) {
+      return portraitMetrics;
+    }
+    if (landscapeMetrics.totalPages < portraitMetrics.totalPages) {
+      return landscapeMetrics;
+    }
+    // Tie-breaker when page counts are equal: match image aspect orientation
+    return targetH > targetW ? portraitMetrics : landscapeMetrics;
   }
 
   function renderCleanImageToCanvas(targetCanvas) {
@@ -109,18 +147,29 @@
 
   function updateImageAndRatio() {
     if (!loadedImg) return;
-    
-    // 1. Update aspect ratio math
-    const targetW = parseFloat(widthInput.value) || 0;
-    const aspect = loadedImg.height / loadedImg.width;
-    const targetH = targetW * aspect;
-    heightDisplay.value = targetH.toFixed(2);
 
-    // 2. Calculate dynamic page grid
-    const { cols, rows, totalPages } = getGridMetrics(targetW, targetH);
+    const aspect = loadedImg.height / loadedImg.width;
+    let targetW, targetH;
+
+    // 1. Update aspect ratio math in whichever direction the user is editing
+    if (activeDimension === 'height') {
+      targetH = parseFloat(heightInput.value) || 0;
+      targetW = aspect > 0 ? targetH / aspect : 0;
+      widthInput.value = targetW > 0 ? targetW.toFixed(2) : '';
+    } else {
+      targetW = parseFloat(widthInput.value) || 0;
+      targetH = targetW * aspect;
+      heightInput.value = targetH > 0 ? targetH.toFixed(2) : '';
+    }
+
+    if (targetW <= 0 || targetH <= 0) return;
+
+    // 2. Calculate dynamic page grid & optimal orientation
+    const { orientation, cols, rows, totalPages } = getBestGridMetrics(targetW, targetH);
     const pageWord = totalPages === 1 ? 'Page' : 'Pages';
-    pageLayoutDisplay.value = `${totalPages} ${pageWord} (${cols} col${cols > 1 ? 's' : ''} × ${rows} row${rows > 1 ? 's' : ''})`;
-    generateBtn.textContent = `Generate ${totalPages}-${pageWord} Landscape PDF`;
+    const orientLabel = orientation === 'portrait' ? 'Portrait' : 'Landscape';
+    pageLayoutDisplay.value = `${totalPages} ${pageWord} — ${orientLabel} (${cols} col${cols > 1 ? 's' : ''} × ${rows} row${rows > 1 ? 's' : ''})`;
+    generateBtn.textContent = `Generate ${totalPages}-${pageWord} ${orientLabel} PDF`;
 
     // 3. Render normal or mirrored image onto the preview canvas
     renderCleanImageToCanvas(canvas);
@@ -149,7 +198,7 @@
       }
       ctx.restore();
     }
-    
+
     previewContainer.style.display = 'block';
   }
 
@@ -165,17 +214,29 @@
     reader.readAsDataURL(file);
   });
 
-  widthInput.addEventListener('input', updateImageAndRatio);
+  widthInput.addEventListener('input', () => {
+    activeDimension = 'width';
+    updateImageAndRatio();
+  });
+
+  heightInput.addEventListener('input', () => {
+    activeDimension = 'height';
+    updateImageAndRatio();
+  });
+
+  orientationSelect.addEventListener('change', updateImageAndRatio);
   mirrorToggle.addEventListener('change', updateImageAndRatio);
 
   generateBtn.addEventListener('click', () => {
     if (!loadedImg) return alert('Please select an image first!');
 
     const targetW = parseFloat(widthInput.value);
-    const targetH = parseFloat(heightDisplay.value);
-    if (!targetW || targetW <= 0) return alert('Please enter a valid target width!');
+    const targetH = parseFloat(heightInput.value);
+    if (!targetW || targetW <= 0 || !targetH || targetH <= 0) {
+      return alert('Please enter a valid target width or height!');
+    }
 
-    const { cols, rows, totalPages, tileW, tileH } = getGridMetrics(targetW, targetH);
+    const { orientation, pageW, pageH, cols, rows, totalPages, tileW, tileH } = getBestGridMetrics(targetW, targetH);
 
     // Export clean image (without preview guide lines) as a high-res JPEG
     const exportCanvas = document.createElement('canvas');
@@ -183,20 +244,20 @@
     const processedImgData = exportCanvas.toDataURL('image/jpeg', 0.98);
 
     const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'in', format: [PAGE_W, PAGE_H] });
+    const doc = new jsPDF({ orientation, unit: 'in', format: [pageW, pageH] });
 
-    // Center each active tile (tileW x tileH) on the 11" x 8.5" page so every seam
+    // Center each active tile (tileW x tileH) on the page so every seam
     // has generous overlap and consistent alignment across rows and columns.
-    const tileLeftX = (PAGE_W - tileW) / 2;
+    const tileLeftX = (pageW - tileW) / 2;
     const tileRightX = tileLeftX + tileW;
-    const tileTopY = (PAGE_H - tileH) / 2;
+    const tileTopY = (pageH - tileH) / 2;
     const tileBottomY = tileTopY + tileH;
 
     let pageIndex = 0;
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         if (pageIndex > 0) {
-          doc.addPage([PAGE_W, PAGE_H], 'landscape');
+          doc.addPage([pageW, pageH], orientation);
         }
         pageIndex++;
 
@@ -211,16 +272,16 @@
         doc.setLineDashPattern([0.1, 0.1], 0);
 
         if (c > 0) {
-          doc.line(tileLeftX, 0, tileLeftX, PAGE_H);
+          doc.line(tileLeftX, 0, tileLeftX, pageH);
         }
         if (c < cols - 1) {
-          doc.line(tileRightX, 0, tileRightX, PAGE_H);
+          doc.line(tileRightX, 0, tileRightX, pageH);
         }
         if (r > 0) {
-          doc.line(0, tileTopY, PAGE_W, tileTopY);
+          doc.line(0, tileTopY, pageW, tileTopY);
         }
         if (r < rows - 1) {
-          doc.line(0, tileBottomY, PAGE_W, tileBottomY);
+          doc.line(0, tileBottomY, pageW, tileBottomY);
         }
 
         // Add subtle corner label for multi-page assembly reference
@@ -237,7 +298,7 @@
     }
 
     const suffix = mirrorToggle.checked ? '_MIRRORED' : '';
-    doc.save(`woodburn_template_${targetW}x${targetH}in_${cols}x${rows}pages${suffix}.pdf`);
+    doc.save(`woodburn_template_${targetW.toFixed(2)}x${targetH.toFixed(2)}in_${cols}x${rows}pages_${orientation}${suffix}.pdf`);
   });
 </script>
 
