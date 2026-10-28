@@ -2,7 +2,7 @@
 
 A lightweight, browser-based utility that converts artwork and line drawings of any size into true-to-scale (1:1), multi-page printable PDFs. Specifically designed for **pyrography (wood burning)** and woodworking templates that span across multiple standard US Letter sheets.
 
-**[Launch the Live Web App →](https://mlinnen.github.io/woodburn-template/src/template_printer.html)**
+**[Launch the Live Web App →](https://mlinnen.github.io/woodburn-template/app)**
 
 ## Features
 
@@ -16,8 +16,10 @@ A lightweight, browser-based utility that converts artwork and line drawings of 
 ## Project Structure
 
 ```text
+├── .github/workflows/
+│   └── deploy.yml                             # GitHub Actions build & Pages deployment
 ├── src/
-│   └── template_printer.html                  # Main single-file web application
+│   └── template_printer.html                  # Main single-file web application source
 └── samples/
     ├── Haunted_House_Wood_Burn.jpg            # Example panoramic wood-burning line art
     └── woodburn_template_17x5.37in.pdf        # Example 2-page PDF output (17" x 5.37")
@@ -32,7 +34,7 @@ The [`samples/`](samples/) directory demonstrates a full workflow:
 
 ## How to Use
 
-1. **Open the App:** Open the **[hosted GitHub Pages app](https://mlinnen.github.io/woodburn-template/src/template_printer.html)** in your browser, or double-click [`src/template_printer.html`](src/template_printer.html) locally (an active internet connection is required to load the `jsPDF` library from CDN).
+1. **Open the App:** Open the **[hosted GitHub Pages app](https://mlinnen.github.io/woodburn-template/app)** in your browser, or double-click [`src/template_printer.html`](src/template_printer.html) locally (an active internet connection is required to load the `jsPDF` library from CDN).
 2. **Select Your Image:** Click **Choose File** under *1. Select Your Image* and upload your template image (`JPG`, `PNG`, `WEBP`, etc.).
 3. **Set Target Width:** Enter your desired total physical width in inches under *2. Target Total Width (Inches)*.
    - **Calculated Height** updates automatically to preserve your artwork's original proportions.
